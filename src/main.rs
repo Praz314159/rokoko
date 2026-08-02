@@ -90,6 +90,8 @@ fn main() {
         challenge_set_repetition_rate
     );
 
+    let tracing_guards = rokoko::tracing::setup();
+
     init_common();
     #[cfg(feature = "snark")]
     {
@@ -101,4 +103,7 @@ fn main() {
         println!("Running executor...");
         execute();
     }
+    drop(tracing_guards);
+    #[cfg(feature = "profile")]
+    rokoko::tracing::print_artifact_paths(rokoko::tracing::run_dir());
 }
