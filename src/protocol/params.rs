@@ -8,7 +8,7 @@ use crate::{
         sampling::sample_random_short_vector,
     },
     protocol::{
-        config::{Config, IntermediateConfig, SimpleConfig},
+        config::{Config, SimpleConfig},
         config_generator::{AuxConfig, AuxProjection, AuxRecursionConfig, AuxSumcheckConfig},
     },
 };
@@ -59,40 +59,34 @@ pub fn compiled_size() -> SizeConfig {
 
 pub const NORM_MARGIN: f64 = 1.02;
 
-const NB_P_26: [[f64; 2]; 9] = [
+const NB_P_26: [[f64; 2]; 7] = [
     [46889.51181234456, 2242.093664412796],
     [136249.25466218154, 2703.859463803546],
     [88564.70651450272, 3127.9992007671613],
     [51809.033633141626, 3129.3796509851595],
     [35428.87688030768, 3111.4773018616092],
     [195669.4144366973, 195560.31913197524],
-    [1602884.0647417393, 1299990.815144861],
-    [73660.94992599539, 17077273.72989793],
-    [350510.5948127674, 836487.5791151952],
+    [913225.8991914323, 2088252.7611613495],
 ];
-const NB_P_28: [[f64; 2]; 9] = [
+const NB_P_28: [[f64; 2]; 7] = [
     [66427.98663966867, 2160.0013888884423],
     [181558.43011548652, 2705.682169065687],
     [95004.44916949942, 3133.253580545309],
     [52846.942182116836, 3145.1373578907487],
     [35438.889895142034, 3128.613750529138],
     [193799.4028705971, 193690.07834166416],
-    [1583993.8583391036, 1296847.5245818223],
-    [73668.6367459043, 18268958.675824028],
-    [349498.9501185948, 809458.9433127538],
+    [940552.7519878936, 2135851.482096309],
 ];
-const NB_P_30: [[f64; 2]; 9] = [
+const NB_P_30: [[f64; 2]; 7] = [
     [146947.061954297, 2201.3457247783685],
     [250426.82932745045, 3131.986111080316],
     [59039.09997620221, 3128.7861863668472],
     [56233.940703102075, 3119.414528401123],
     [35479.55817086791, 3145.0324322652064],
     [193916.4559804041, 193806.1362831425],
-    [1612935.666007792, 1308359.9714466962],
-    [73796.00136863785, 18564103.121726133],
-    [347114.5618581854, 851538.0815265985],
+    [923123.5894028491, 2020403.71867481],
 ];
-const NB_P_EN_26: [[f64; 2]; 10] = [
+const NB_P_EN_26: [[f64; 2]; 8] = [
     [160194.58070733852, 2738.6629949667044],
     [89390.48689877463, 2742.341882406349],
     [124864.64003071486, 2736.1045301669305],
@@ -100,11 +94,9 @@ const NB_P_EN_26: [[f64; 2]; 10] = [
     [52595.08592064471, 3154.820914093223],
     [35762.117065408755, 3168.709989885474],
     [195873.64476876412, 195765.28839403577],
-    [1632931.4417883563, 1306216.0143157793],
-    [74323.03447115168, 19268677.72321954],
-    [357870.91235807363, 861120.5903594455],
+    [933442.0476976597, 2257074.243113859],
 ];
-const NB_P_EN_28: [[f64; 2]; 10] = [
+const NB_P_EN_28: [[f64; 2]; 8] = [
     [316140.5607273448, 2688.3418681410294],
     [147581.0541092589, 2694.3485297934267],
     [181869.85245773967, 2697.6367435220036],
@@ -112,12 +104,10 @@ const NB_P_EN_28: [[f64; 2]; 10] = [
     [52929.56034202438, 3134.5771644673227],
     [35536.13603080672, 3132.0439013525975],
     [195785.91413837718, 195676.68320727433],
-    [1616582.0151078014, 1300184.9428508237],
-    [73623.80077800927, 18362161.429342028],
-    [353995.61067052797, 854152.6877350443],
+    [910926.7445223024, 2119908.7326722345],
 ];
 
-const NB_P_EN_29: [[f64; 2]; 10] = [
+const NB_P_EN_29: [[f64; 2]; 8] = [
     [295378.5152376523, 2758.9842333728548],
     [203582.29345156715, 3169.05190869446],
     [245363.8040706086, 3160.987978464961],
@@ -125,9 +115,7 @@ const NB_P_EN_29: [[f64; 2]; 10] = [
     [56612.91292629271, 3167.904354616787],
     [35762.18892909102, 3164.261683236707],
     [196909.5539759308, 196800.77191159592],
-    [1620580.5415368902, 1306547.4234883324],
-    [74270.70143737704, 19376646.039899193],
-    [361206.98244081606, 860724.5325265221],
+    [968769.3, 2324786.5], // provisional; the calibration run OOMs on 64 GB
 ];
 
 fn assign_norm_bounds(config: &mut Config, bounds: &[[f64; 2]]) {
@@ -578,70 +566,14 @@ pub static P_5: LazyLock<AuxSumcheckConfig> = LazyLock::new(|| AuxSumcheckConfig
 
     witness_decomposition_chunks: 2,
     witness_decomposition_base_log: 7,
+    next: Some(Box::new(AuxConfig::Simple(P_LAST.clone()))),
 
-    next: Some(Box::new(AuxConfig::Sumcheck(P_6.clone()))),
-});
-
-pub static P_6: LazyLock<AuxSumcheckConfig> = LazyLock::new(|| AuxSumcheckConfig {
-    witness_height: 2usize.pow(7),
-    witness_width: 2usize.pow(3),
-    projection_ratio: 2usize.pow(6),
-    projection_height: 2usize.pow(8),
-    basic_commitment_rank: 4,
-    nof_openings: 2,
-    commitment_recursion: AuxRecursionConfig {
-        decomposition_base_log: 15,
-        decomposition_chunks: 4,
-        rank: 2,
-        next: None,
-    },
-    opening_recursion: AuxRecursionConfig {
-        decomposition_base_log: 15,
-        decomposition_chunks: 4,
-        rank: 2,
-        next: None,
-    },
-    projection_recursion: AuxProjection::Fine {
-        nof_batches: 2,
-        recursion_constant_term: AuxRecursionConfig {
-            decomposition_base_log: 11,
-            decomposition_chunks: 2,
-            rank: 2,
-            next: None,
-        },
-        recursion_batched_projection: AuxRecursionConfig {
-            decomposition_base_log: 13,
-            decomposition_chunks: 4,
-            rank: 2,
-            next: None,
-        },
-    },
-
-    witness_decomposition_chunks: 1,
-    witness_decomposition_base_log: 17,
-
-    next: Some(Box::new(AuxConfig::Intermediate(P_INTERMEDIATE.clone()))),
-});
-
-pub static P_INTERMEDIATE: LazyLock<IntermediateConfig> = LazyLock::new(|| IntermediateConfig {
-    witness_height: 2usize.pow(7),
-    witness_width: 2usize.pow(2),
-    projection_ratio: 2usize.pow(6),
-    projection_height: 2usize.pow(8),
-    basic_commitment_rank: 4,
-    nof_openings: 2,
-    projection_nof_batches: 2,
-    witness_decomposition_base_log: 11,
-    witness_decomposition_chunks: 2,
-    norm_bound: f64::INFINITY,
-    projection_norm_bound: f64::INFINITY,
-    next: Some(Box::new(Config::Simple(P_LAST.clone()))),
 });
 
 pub static P_LAST: LazyLock<SimpleConfig> = LazyLock::new(|| SimpleConfig {
-    witness_height: 2usize.pow(5),
-    witness_width: 2usize.pow(3),
-    projection_ratio: 2usize.pow(4),
+    witness_height: 2usize.pow(8),
+    witness_width: 2usize.pow(2),
+    projection_ratio: 2usize.pow(7),
     projection_height: 2usize.pow(8),
     basic_commitment_rank: 4,
     projection_nof_batches: 2,
