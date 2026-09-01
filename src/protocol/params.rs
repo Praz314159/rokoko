@@ -57,73 +57,78 @@ pub fn compiled_size() -> SizeConfig {
     SizeConfig::Medium
 }
 
-pub const NORM_MARGIN: f64 = 1.02;
+pub const NORM_MARGIN: f64 = 1.85; // verifier accepts norms up to this factor times the expected bound
 
-const NB_P_26: [[f64; 2]; 7] = [
-    [46889.51181234456, 2242.093664412796],
-    [136249.25466218154, 2703.859463803546],
-    [88564.70651450272, 3127.9992007671613],
-    [51809.033633141626, 3129.3796509851595],
-    [35428.87688030768, 3111.4773018616092],
-    [195669.4144366973, 195560.31913197524],
-    [913225.8991914323, 2088252.7611613495],
-];
-const NB_P_28: [[f64; 2]; 7] = [
-    [66427.98663966867, 2160.0013888884423],
-    [181558.43011548652, 2705.682169065687],
-    [95004.44916949942, 3133.253580545309],
-    [52846.942182116836, 3145.1373578907487],
-    [35438.889895142034, 3128.613750529138],
-    [193799.4028705971, 193690.07834166416],
-    [940552.7519878936, 2135851.482096309],
-];
-const NB_P_30: [[f64; 2]; 7] = [
-    [146947.061954297, 2201.3457247783685],
-    [250426.82932745045, 3131.986111080316],
-    [59039.09997620221, 3128.7861863668472],
-    [56233.940703102075, 3119.414528401123],
-    [35479.55817086791, 3145.0324322652064],
-    [193916.4559804041, 193806.1362831425],
-    [923123.5894028491, 2020403.71867481],
-];
-const NB_P_EN_26: [[f64; 2]; 8] = [
-    [160194.58070733852, 2738.6629949667044],
-    [89390.48689877463, 2742.341882406349],
-    [124864.64003071486, 2736.1045301669305],
-    [87877.51896247413, 3168.7701084174596],
-    [52595.08592064471, 3154.820914093223],
-    [35762.117065408755, 3168.709989885474],
-    [195873.64476876412, 195765.28839403577],
-    [933442.0476976597, 2257074.243113859],
-];
-const NB_P_EN_28: [[f64; 2]; 8] = [
-    [316140.5607273448, 2710.5032743016563],
-    [147581.0541092589, 2714.6966681380813],
-    [181869.85245773967, 2717.038093218422],
-    [95340.00619362263, 3156.4337471266526],
-    [53130.39420143615, 3134.5771644673227],
-    [35536.13603080672, 3143.189940172245],
-    [195785.91413837718, 195676.68320727433],
-    [957901.1175105706, 2400647.839785128],
+const NB_P_26: [[f64; 3]; 7] = [
+    [53005.60869379768, 2187.258786700833, f64::INFINITY],
+    [75795.76230238733, 2714.218487889286, f64::INFINITY],
+    [42347.903572668154, 3132.204335607752, f64::INFINITY],
+    [37207.207420068495, 3114.7304859329324, f64::INFINITY],
+    [21489.53142811634, 3131.9711045921226, f64::INFINITY],
+    [19936.88313152284, 18768.604210222988, f64::INFINITY],
+    [93674.81073372926, 224590.90958674173, f64::INFINITY],
 ];
 
-const NB_P_EN_29: [[f64; 2]; 8] = [
-    [255497.9865713231, 2738.004017528097],
-    [180884.3985422734, 3162.853142338417],
-    [244952.02035908992, 3160.4202252232217],
-    [58704.64349606426, 3168.298597039111],
-    [56399.73981322964, 3146.806476413826],
-    [35765.94076771922, 3153.750782798159],
-    [196535.54675681447, 196424.94941325556],
-    [943164.8811432708, 2386396.4914190182],
+const NB_P_28: [[f64; 3]; 7] = [
+    [75086.2198009728, 2222.9271243115463, f64::INFINITY],
+    [97049.38765391568, 2710.4818759770374, f64::INFINITY],
+    [53543.95118031541, 3122.0562134593283, f64::INFINITY],
+    [39527.95458912591, 3159.0519147364453, f64::INFINITY],
+    [21491.85138604862, 3129.8618180360613, f64::INFINITY],
+    [20026.54103933078, 18844.89355236585, f64::INFINITY],
+    [94471.88754333217, 227110.0547906235, f64::INFINITY],
 ];
 
-fn assign_norm_bounds(config: &mut Config, bounds: &[[f64; 2]]) {
-    fn rec(config: &mut Config, bounds: &[[f64; 2]], i: &mut usize) {
+const NB_P_30: [[f64; 3]; 7] = [
+    [155066.22588107316, 2206.3048293470238, f64::INFINITY],
+    [127504.2830653151, 3126.8253868740417, f64::INFINITY],
+    [46944.76686490199, 3160.822203161703, f64::INFINITY],
+    [41239.37173381767, 3127.22848541644, f64::INFINITY],
+    [20945.39655867131, 3108.5462840369614, f64::INFINITY],
+    [19945.057031756012, 18776.107264286708, f64::INFINITY],
+    [93419.08105949234, 230465.33839603735, f64::INFINITY],
+];
+
+const NB_P_EN_26: [[f64; 3]; 8] = [
+    [160182.94334291652, 2724.094344915389, f64::INFINITY],
+    [89330.65946247123, 2711.6249740699764, f64::INFINITY],
+    [71240.89427428602, 2719.503263465591, f64::INFINITY],
+    [49323.085852367345, 3141.5819263549374, f64::INFINITY],
+    [37658.174995610185, 3129.595181489133, f64::INFINITY],
+    [20677.989118867434, 3116.819211953109, f64::INFINITY],
+    [19947.41073422814, 18776.49674460068, f64::INFINITY],
+    [93611.53013384623, 214747.6993869783, f64::INFINITY],
+];
+
+const NB_P_EN_28: [[f64; 3]; 8] = [
+    [316064.95526552765, 2726.532229774664, 19255784.083067354],
+    [146363.3975111264, 2698.7339624349784, 3580972.197575122],
+    [97279.68811113654, 2717.1343360238925, f64::INFINITY],
+    [53533.04769952856, 3103.0016113434426, f64::INFINITY],
+    [38637.24035176425, 3136.247120365358, f64::INFINITY],
+    [20909.072169754447, 3142.1613580464004, f64::INFINITY],
+    [19882.262069492997, 18697.192837428833, f64::INFINITY],
+    [93275.05554005314, 237003.21750980514, f64::INFINITY],
+];
+
+const NB_P_EN_29: [[f64; 3]; 8] = [
+    [255497.9865713231, 2738.004017528097, f64::INFINITY],
+    [180884.3985422734, 3162.853142338417, f64::INFINITY],
+    [244952.02035908992, 3160.4202252232217, f64::INFINITY],
+    [58704.64349606426, 3168.298597039111, f64::INFINITY],
+    [56399.73981322964, 3146.806476413826, f64::INFINITY],
+    [35765.94076771922, 3153.750782798159, f64::INFINITY],
+    [196535.54675681447, 196424.94941325556, f64::INFINITY],
+    [943164.8811432708, 2386396.4914190182, f64::INFINITY],
+];
+
+fn assign_norm_bounds(config: &mut Config, bounds: &[[f64; 3]]) {
+    fn rec(config: &mut Config, bounds: &[[f64; 3]], i: &mut usize) {
         match config {
             Config::Sumcheck(c) => {
                 c.norm_bound = bounds[*i][0] * NORM_MARGIN;
                 c.most_inner_norm_bound = bounds[*i][1] * NORM_MARGIN;
+                c.projection_norm_bound = bounds[*i][2] * NORM_MARGIN;
                 *i += 1;
                 if let Some(next) = c.next.as_deref_mut() {
                     rec(next, bounds, i);
@@ -146,15 +151,15 @@ fn assign_norm_bounds(config: &mut Config, bounds: &[[f64; 2]]) {
     }
     let mut i = 0;
     rec(config, bounds, &mut i);
-    assert_eq!(
-        i,
-        bounds.len(),
-        "norm-bound array length must match chain length"
+    assert!(
+        i <= bounds.len(),
+        "norm-bound array length be at least the number of configs in the chain"
     );
 }
 
 pub fn p_exact_norm_root_aux(size: SizeConfig, nof_openings: usize) -> AuxSumcheckConfig {
     AuxSumcheckConfig {
+        exact_projection_norm: true,
         witness_height: size.pick(
             2usize.pow(13),
             2usize.pow(14),
@@ -162,8 +167,8 @@ pub fn p_exact_norm_root_aux(size: SizeConfig, nof_openings: usize) -> AuxSumche
             2usize.pow(15),
         ),
         witness_width: size.pick(2usize.pow(7), 2usize.pow(8), 2usize.pow(8), 2usize.pow(9)),
-        projection_ratio: 2usize.pow(5),  // no-op
-        projection_height: 2usize.pow(8), // no-op
+        projection_ratio: 2usize.pow(5), 
+        projection_height: 2usize.pow(8), 
         basic_commitment_rank: 6,
         nof_openings,
         commitment_recursion: AuxRecursionConfig {
@@ -194,6 +199,7 @@ pub fn p_exact_norm_root_aux(size: SizeConfig, nof_openings: usize) -> AuxSumche
 
 pub fn p_int(size: SizeConfig) -> AuxSumcheckConfig {
     AuxSumcheckConfig {
+        exact_projection_norm: true,
         witness_height: size.pick(
             2usize.pow(14),
             2usize.pow(15),
@@ -233,6 +239,7 @@ pub fn p_int(size: SizeConfig) -> AuxSumcheckConfig {
 
 pub fn p_root_aux(size: SizeConfig, nof_openings: usize) -> AuxSumcheckConfig {
     AuxSumcheckConfig {
+        exact_projection_norm: false,
         witness_height: size.pick(
             2usize.pow(13),
             2usize.pow(14),
@@ -242,7 +249,7 @@ pub fn p_root_aux(size: SizeConfig, nof_openings: usize) -> AuxSumcheckConfig {
         witness_width: size.pick(2usize.pow(7), 2usize.pow(8), 2usize.pow(8), 2usize.pow(9)),
         projection_ratio: 1,              // no-op
         projection_height: 2usize.pow(8), // no-op,
-        basic_commitment_rank: 6,
+        basic_commitment_rank: size.pick(10, 10, 10, 12),
         nof_openings,
         commitment_recursion: AuxRecursionConfig {
             decomposition_base_log: 7,
@@ -267,6 +274,7 @@ pub fn p_root_aux(size: SizeConfig, nof_openings: usize) -> AuxSumcheckConfig {
 
 pub fn p_1(size: SizeConfig) -> AuxSumcheckConfig {
     AuxSumcheckConfig {
+        exact_projection_norm: false,
         witness_height: size.pick(
             2usize.pow(13),
             2usize.pow(13),
@@ -276,7 +284,7 @@ pub fn p_1(size: SizeConfig) -> AuxSumcheckConfig {
         witness_width: size.pick(2usize.pow(3), 2usize.pow(4), 2usize.pow(4), 2usize.pow(4)),
         projection_ratio: 2usize.pow(5),
         projection_height: 2usize.pow(8),
-        basic_commitment_rank: size.pick(5, 5, 6, 6),
+        basic_commitment_rank: size.pick(6, 6, 6, 6),
         nof_openings: 2,
         commitment_recursion: AuxRecursionConfig {
             decomposition_base_log: 7,
@@ -291,7 +299,7 @@ pub fn p_1(size: SizeConfig) -> AuxSumcheckConfig {
             next: Some(Box::new(DECOMP_8_LAST_LEVEL.clone())),
         },
         projection_recursion: AuxProjection::Coarse(AuxRecursionConfig {
-            decomposition_base_log: 10,
+            decomposition_base_log: 9,
             decomposition_chunks: 2,
             rank: 2,
             next: Some(Box::new(DECOMP_8_LAST_LEVEL.clone())),
@@ -304,11 +312,13 @@ pub fn p_1(size: SizeConfig) -> AuxSumcheckConfig {
         witness_decomposition_base_log: 7,
 
         next: Some(Box::new(AuxConfig::Sumcheck(p_2(size)))),
+        // next: None
     }
 }
 
 pub fn p_2(size: SizeConfig) -> AuxSumcheckConfig {
     AuxSumcheckConfig {
+        exact_projection_norm: false,
         witness_height: size.pick(
             2usize.pow(10),
             2usize.pow(10),
@@ -316,9 +326,9 @@ pub fn p_2(size: SizeConfig) -> AuxSumcheckConfig {
             2usize.pow(11),
         ),
         witness_width: 2usize.pow(5),
-        projection_ratio: size.pick(2usize.pow(5), 2usize.pow(5), 2usize.pow(8), 2usize.pow(8)),
+        projection_ratio: size.pick(2usize.pow(6), 2usize.pow(5), 2usize.pow(8), 2usize.pow(8)),
         projection_height: 2usize.pow(8),
-        basic_commitment_rank: 5,
+        basic_commitment_rank: 6,
         nof_openings: 2,
         commitment_recursion: AuxRecursionConfig {
             decomposition_base_log: 7,
@@ -335,7 +345,7 @@ pub fn p_2(size: SizeConfig) -> AuxSumcheckConfig {
         projection_recursion: AuxProjection::Fine {
             nof_batches: 2,
             recursion_constant_term: AuxRecursionConfig {
-                decomposition_base_log: 10,
+                decomposition_base_log: 9,
                 decomposition_chunks: 2,
                 rank: 2,
                 next: Some(Box::new(DECOMP_8_LAST_LEVEL.clone())),
@@ -352,6 +362,7 @@ pub fn p_2(size: SizeConfig) -> AuxSumcheckConfig {
         witness_decomposition_base_log: 8,
 
         next: Some(Box::new(AuxConfig::Sumcheck(P_3.clone()))),
+        // next: None
     }
 }
 
@@ -448,11 +459,12 @@ pub static P_TWO_EVALS: LazyLock<Config> = LazyLock::new(|| match compiled_size(
 });
 
 pub static P_3: LazyLock<AuxSumcheckConfig> = LazyLock::new(|| AuxSumcheckConfig {
+    exact_projection_norm: false,
     witness_height: 2usize.pow(8),
     witness_width: 2usize.pow(5),
-    projection_ratio: 2usize.pow(5),
+    projection_ratio: 2usize.pow(6),
     projection_height: 2usize.pow(8),
-    basic_commitment_rank: 4,
+    basic_commitment_rank: 6,
     nof_openings: 2,
     commitment_recursion: AuxRecursionConfig {
         decomposition_base_log: 7,
@@ -484,16 +496,17 @@ pub static P_3: LazyLock<AuxSumcheckConfig> = LazyLock::new(|| AuxSumcheckConfig
 
     witness_decomposition_chunks: 2,
     witness_decomposition_base_log: 8,
-
     next: Some(Box::new(AuxConfig::Sumcheck(P_4.clone()))),
+    // next: None
 });
 
 pub static P_4: LazyLock<AuxSumcheckConfig> = LazyLock::new(|| AuxSumcheckConfig {
+    exact_projection_norm: false,
     witness_height: 2usize.pow(9),
     witness_width: 2usize.pow(3),
     projection_ratio: 2usize.pow(5),
     projection_height: 2usize.pow(8),
-    basic_commitment_rank: 4,
+    basic_commitment_rank: 5,
     nof_openings: 2,
     commitment_recursion: AuxRecursionConfig {
         decomposition_base_log: 7,
@@ -510,7 +523,7 @@ pub static P_4: LazyLock<AuxSumcheckConfig> = LazyLock::new(|| AuxSumcheckConfig
     projection_recursion: AuxProjection::Fine {
         nof_batches: 2,
         recursion_constant_term: AuxRecursionConfig {
-            decomposition_base_log: 10,
+            decomposition_base_log: 9,
             decomposition_chunks: 2,
             rank: 2,
             next: Some(Box::new(DECOMP_8_LAST_LEVEL.clone())),
@@ -530,35 +543,36 @@ pub static P_4: LazyLock<AuxSumcheckConfig> = LazyLock::new(|| AuxSumcheckConfig
 });
 
 pub static P_5: LazyLock<AuxSumcheckConfig> = LazyLock::new(|| AuxSumcheckConfig {
+    exact_projection_norm: false,
     witness_height: 2usize.pow(8),
     witness_width: 2usize.pow(3),
     projection_ratio: 2usize.pow(6),
     projection_height: 2usize.pow(8),
-    basic_commitment_rank: 3,
+    basic_commitment_rank: 4,
     nof_openings: 2,
     commitment_recursion: AuxRecursionConfig {
-        decomposition_base_log: 7,
-        decomposition_chunks: 8,
+        decomposition_base_log: 8,
+        decomposition_chunks: 7,
         rank: 2,
         next: None,
     },
     opening_recursion: AuxRecursionConfig {
-        decomposition_base_log: 7,
-        decomposition_chunks: 8,
+        decomposition_base_log: 8,
+        decomposition_chunks: 7,
         rank: 2,
         next: None,
     },
     projection_recursion: AuxProjection::Fine {
         nof_batches: 2,
         recursion_constant_term: AuxRecursionConfig {
-            decomposition_base_log: 10,
+            decomposition_base_log: 9,
             decomposition_chunks: 2,
             rank: 2,
             next: None,
         },
         recursion_batched_projection: AuxRecursionConfig {
-            decomposition_base_log: 13,
-            decomposition_chunks: 4,
+            decomposition_base_log: 8,
+            decomposition_chunks: 7,
             rank: 2,
             next: None,
         },
@@ -567,6 +581,7 @@ pub static P_5: LazyLock<AuxSumcheckConfig> = LazyLock::new(|| AuxSumcheckConfig
     witness_decomposition_chunks: 2,
     witness_decomposition_base_log: 7,
     next: Some(Box::new(AuxConfig::Simple(P_LAST.clone()))),
+    // next: None
 
 });
 

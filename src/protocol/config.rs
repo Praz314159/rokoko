@@ -6,7 +6,9 @@ use crate::{
         ring_arithmetic::{QuadraticExtension, RingElement},
     },
     protocol::{
-        commitment::{Prefix, RecursionConfig, RecursiveCommitment, RecursiveCommitmentWithAux},
+        commitment::{
+            Placement, Prefix, RecursionConfig, RecursiveCommitment, RecursiveCommitmentWithAux,
+        },
         config_generator::{AuxConfig, AuxProjection, AuxRecursionConfig, AuxSumcheckConfig},
         params::P,
         sumcheck_utils::polynomial::Polynomial,
@@ -33,6 +35,7 @@ pub enum Projection {
 
 pub static SOMEWHAT_REAL_CONFIG: LazyLock<Config> = LazyLock::new(|| {
     AuxSumcheckConfig {
+        exact_projection_norm: false,
         witness_height: 2usize.pow(15),   // 2^15
         witness_width: 2usize.pow(6),     // 2^6
         projection_ratio: 2usize.pow(6),  // 2^6
@@ -68,6 +71,7 @@ pub static SOMEWHAT_REAL_CONFIG: LazyLock<Config> = LazyLock::new(|| {
         witness_decomposition_base_log: 10, // no decomposition
 
         next: Some(Box::new(AuxConfig::Sumcheck(AuxSumcheckConfig {
+            exact_projection_norm: false,
             witness_height: 2usize.pow(10),
             witness_width: 2usize.pow(7),
             projection_ratio: 2usize.pow(7),
@@ -118,6 +122,7 @@ pub static SOMEWHAT_REAL_CONFIG: LazyLock<Config> = LazyLock::new(|| {
 
 pub static TOY_CONFIG: LazyLock<Config> = LazyLock::new(|| {
     AuxSumcheckConfig {
+        exact_projection_norm: false,
         witness_height: 512,
         witness_width: 16,
         projection_ratio: 32,
@@ -158,6 +163,7 @@ pub static TOY_CONFIG: LazyLock<Config> = LazyLock::new(|| {
 
 pub static TOY_CONFIG_II: LazyLock<Config> = LazyLock::new(|| {
     AuxSumcheckConfig {
+        exact_projection_norm: false,
         witness_height: 1024,
         witness_width: 16,
         projection_ratio: 32,
@@ -253,15 +259,38 @@ pub struct SumcheckConfig {
 
     pub witness_decomposition_base_log: usize,
     pub witness_decomposition_chunks: usize,
-    pub folded_witness_prefix: Prefix,
+    pub folded_witness_placement: Placement,
 
     pub basic_commitment_rank: usize,
     pub composed_witness_length: usize,
 
     pub norm_bound: f64,
     pub most_inner_norm_bound: f64,
+    /// Bounds the projection recursion's level-0 block, claimed exactly when
+    /// `exact_projection_norm` is set; `INFINITY` until it is calibrated.
+    pub projection_norm_bound: f64,
+
+    /// Adds a norm claim scoped to the projection recursion's level-0 placements, so the audit
+    /// bounds the decomposed projection image on its own rather than through the whole witness.
+    pub exact_projection_norm: bool,
 
     pub next: Option<Box<Config>>, // for multiple rounds
+}
+
+impl SumcheckConfig {
+    /// The recursion tree whose level-0 placements the exact projection-norm claim covers, or
+    /// `None` when the round makes no such claim. `Fine` scopes to the constant-term tree: that
+    /// is the projection image the extraction analysis recomposes.
+    pub fn projection_norm_scope(&self) -> Option<&RecursionConfig> {
+        if !self.exact_projection_norm {
+            return None;
+        }
+        match &self.projection_recursion {
+            Projection::Coarse(recursion) => Some(recursion),
+            Projection::Fine(recursion) => Some(&recursion.recursion_constant_term),
+            Projection::Skip => None,
+        }
+    }
 }
 
 impl ConfigBase for SumcheckConfig {
@@ -380,6 +409,8 @@ pub struct SumcheckRoundProof {
     pub claim_over_witness_conjugate: RingElement,
     pub norm_claim: RingElement,
     pub most_inner_norm_claim: RingElement,
+    /// Present exactly when the round's config asks for the exact projection-image norm.
+    pub projection_norm_claim: Option<RingElement>,
     pub rc_opening_inner: Vec<RingElement>,
     pub rc_coarse_projection_inner: Option<Vec<RingElement>>,
     pub rc_fine_projection_inner: Option<(Vec<RingElement>, Vec<RingElement>)>,
@@ -403,12 +434,15 @@ impl SizeableProof for SumcheckRoundProof {
         tracing::debug!("Polys size: {} KB, ", to_kb(size));
 
         let mut claims_size = 0;
-        let claims = vec![
+        let mut claims = vec![
             &self.claim_over_witness,
             &self.claim_over_witness_conjugate,
             &self.norm_claim,
             &self.most_inner_norm_claim,
         ];
+        if let Some(projection_norm_claim) = &self.projection_norm_claim {
+            claims.push(projection_norm_claim);
+        }
         for claim in claims {
             claims_size += claim.compact_size_in_bits();
         }
@@ -659,7 +693,7 @@ impl SizeableProof for IntermediateRoundProof {
 }
 
 #[inline]
-pub fn paste_by_prefix(dest: &mut Vec<RingElement>, src: &Vec<RingElement>, prefix: &Prefix) {
+pub fn paste_slice_by_prefix(dest: &mut Vec<RingElement>, src: &[RingElement], prefix: &Prefix) {
     debug_assert_eq!(
         src.len().next_power_of_two(),
         1 << dest.len().ilog2() as usize - prefix.length,
@@ -673,12 +707,32 @@ pub fn paste_by_prefix(dest: &mut Vec<RingElement>, src: &Vec<RingElement>, pref
     }
 }
 
+/// Pastes one component: each of its dyadic blocks lands at that block's prefix.
+#[inline]
+pub fn paste_placement(dest: &mut Vec<RingElement>, src: &[RingElement], placement: &Placement) {
+    debug_assert_eq!(src.len(), placement.size, "component length mismatch");
+    for (offset, size, prefix) in placement.blocks_with_offsets() {
+        paste_slice_by_prefix(dest, &src[offset..offset + size], &prefix);
+    }
+}
+
 pub fn paste_recursive_commitment(
     dest: &mut Vec<RingElement>,
     commitment: &RecursiveCommitmentWithAux,
     config: &RecursionConfig,
 ) {
-    paste_by_prefix(dest, &commitment.committed_data, &config.prefix);
+    // The commitment covers a power-of-two number of rows and digit planes; the ones past the
+    // real rows and planes are identically zero, so only the placed ones reach the next round's
+    // witness.
+    let row_stride = config.row_len() * config.padded_chunks();
+    for (row, placement) in config.placements.iter().enumerate() {
+        let start = row * row_stride;
+        paste_placement(
+            dest,
+            &commitment.committed_data[start..start + placement.size],
+            placement,
+        );
+    }
 
     if let (Some(next_commitment), Some(next_config)) = (&commitment.next, &config.next) {
         paste_recursive_commitment(dest, next_commitment, next_config);

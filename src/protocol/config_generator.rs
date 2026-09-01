@@ -1,4 +1,4 @@
-use crate::protocol::commitment::{Prefix, RecursionConfig};
+use crate::protocol::commitment::{block_sizes, Placement, Prefix, RecursionConfig};
 use crate::protocol::config::{
     Config, FineProjectionConfig, IntermediateConfig, Projection, SimpleConfig, SumcheckConfig,
 };
@@ -42,6 +42,8 @@ pub struct AuxSumcheckConfig {
     pub projection_recursion: AuxProjection,
     pub witness_decomposition_base_log: usize,
     pub witness_decomposition_chunks: usize,
+    /// Adds the exact projection-image norm claim to the generated round.
+    pub exact_projection_norm: bool,
     pub next: Option<Box<AuxConfig>>,
 }
 
@@ -99,68 +101,85 @@ impl AuxSumcheckConfig {
         let mut layout_lines: Vec<String> = Vec::new();
 
         for comp in &components {
-            let required_bits = comp.size.ilog2() as usize;
-            let prefix_length = total_bits - required_bits;
+            // A component is a set of dyadic blocks, one per set bit of its size, largest first.
+            // A power-of-two component decomposes into a single block.
+            let mut blocks = Vec::new();
+            let mut local_offset = 0;
 
-            // Find an unused prefix
-            let mut prefix_value = 0;
-            let max_prefix = 1 << prefix_length;
+            for block in block_sizes(comp.size) {
+                let required_bits = block.ilog2() as usize;
+                let prefix_length = total_bits - required_bits;
 
-            while prefix_value < max_prefix {
-                // Check if this prefix conflicts with any already assigned
-                let start = prefix_value << required_bits;
-                let end = start + comp.size;
+                // Find an unused prefix
+                let mut prefix_value = 0;
+                let max_prefix = 1 << prefix_length;
 
-                let mut conflict = false;
-                for i in start..end {
-                    if used_prefixes.contains(&i) {
-                        conflict = true;
+                while prefix_value < max_prefix {
+                    // Check if this prefix conflicts with any already assigned
+                    let start = prefix_value << required_bits;
+                    let end = start + block;
+
+                    let mut conflict = false;
+                    for i in start..end {
+                        if used_prefixes.contains(&i) {
+                            conflict = true;
+                            break;
+                        }
+                    }
+
+                    if !conflict {
+                        // Mark this range as used
+                        for i in start..end {
+                            used_prefixes.insert(i);
+                        }
                         break;
                     }
+
+                    prefix_value += 1;
                 }
 
-                if !conflict {
-                    // Mark this range as used
-                    for i in start..end {
-                        used_prefixes.insert(i);
-                    }
-                    break;
+                if prefix_value >= max_prefix {
+                    panic!("Could not find a valid prefix for component: {}", comp.name);
                 }
 
-                prefix_value += 1;
+                let prefix = Prefix {
+                    prefix: prefix_value,
+                    length: prefix_length,
+                };
+                blocks.push(prefix);
+
+                if want_layout {
+                    let prefix_binary = format!("{:0width$b}", prefix_value, width = prefix_length);
+                    let start = prefix_value << required_bits;
+
+                    // Calculate indentation based on path depth
+                    let indent_level = comp.path.iter().filter(|s| *s == "next").count();
+                    let indent = "  ".repeat(indent_level + 1);
+
+                    layout_lines.push(format!(
+                        "{}{} (size={}) [{}, {}): prefix=0b{} (len={}) -> indices [{}, {}]",
+                        indent,
+                        comp.name,
+                        comp.size,
+                        local_offset,
+                        local_offset + block,
+                        prefix_binary,
+                        prefix_length,
+                        start,
+                        start + block - 1
+                    ));
+                }
+
+                local_offset += block;
             }
 
-            if prefix_value >= max_prefix {
-                panic!("Could not find a valid prefix for component: {}", comp.name);
-            }
-
-            let prefix = Prefix {
-                prefix: prefix_value,
-                length: prefix_length,
-            };
-
-            assigned_prefixes.push((comp.clone(), prefix));
-
-            if want_layout {
-                let prefix_binary = format!("{:0width$b}", prefix_value, width = prefix_length);
-                let start = prefix_value << required_bits;
-                let end = start + comp.size;
-
-                // Calculate indentation based on path depth
-                let indent_level = comp.path.iter().filter(|s| *s == "next").count();
-                let indent = "  ".repeat(indent_level + 1);
-
-                layout_lines.push(format!(
-                    "{}{} (size={}): prefix=0b{} (len={}) -> indices [{}, {}]",
-                    indent,
-                    comp.name,
-                    comp.size,
-                    prefix_binary,
-                    prefix_length,
-                    start,
-                    end - 1
-                ));
-            }
+            assigned_prefixes.push((
+                comp.clone(),
+                Placement {
+                    size: comp.size,
+                    blocks,
+                },
+            ));
         }
 
         // The ratio must cover the highest used index: the layout can leave
@@ -199,22 +218,28 @@ impl AuxSumcheckConfig {
             path: vec!["folded_witness".to_string()],
         });
 
-        // Commitment recursion chain
+        // Commitment recursion chain. A commitment's input length must be a power of two, so the
+        // prover pads the basic commitment up to `rank.next_power_of_two()` rows; the padding rows
+        // are zero and are never placed, so the round is charged for the real rows only.
         self.collect_recursion_components(
             &self.commitment_recursion,
             "commitment",
-            self.basic_commitment_rank.next_power_of_two() * self.witness_width, // It seems that we cannot fit into 4 rank, but 8 seems too large, so we use next power of two for simplicity
+            self.witness_width,
             components,
             vec!["commitment_recursion".to_string()],
+            self.basic_commitment_rank,
         );
 
         // Opening recursion chain
+        // One opening per row, like the basic-commitment rows: `open_at` pads the rhs up to
+        // `nof_openings.next_power_of_two()` rows and the padding rows are never placed.
         self.collect_recursion_components(
             &self.opening_recursion,
             "opening",
-            self.nof_openings * self.witness_width,
+            self.witness_width,
             components,
             vec!["opening_recursion".to_string()],
+            self.nof_openings,
         );
 
         // Projection recursion
@@ -227,6 +252,7 @@ impl AuxSumcheckConfig {
                     base_size,
                     components,
                     vec!["projection_recursion".to_string()],
+                    1,
                 );
             }
             AuxProjection::Fine {
@@ -245,6 +271,7 @@ impl AuxSumcheckConfig {
                         "projection_recursion".to_string(),
                         "constant_term".to_string(),
                     ],
+                    1,
                 );
 
                 let batched_size = self.witness_width * nof_batches;
@@ -257,6 +284,7 @@ impl AuxSumcheckConfig {
                         "projection_recursion".to_string(),
                         "batched_projection".to_string(),
                     ],
+                    1,
                 );
             }
             AuxProjection::Skip => {
@@ -265,6 +293,8 @@ impl AuxSumcheckConfig {
         }
     }
 
+    /// `base_size` is the input length of one row of this level's input; the level lays down
+    /// `rows` independent blocks of that size, each addressed by its own prefix.
     fn collect_recursion_components(
         &self,
         config: &AuxRecursionConfig,
@@ -272,6 +302,7 @@ impl AuxSumcheckConfig {
         base_size: usize,
         components: &mut Vec<ComponentInfo>,
         mut path: Vec<String>,
+        rows: usize,
     ) {
         let size = base_size * config.decomposition_chunks;
         let depth = path.iter().filter(|s| *s == "next").count();
@@ -282,11 +313,23 @@ impl AuxSumcheckConfig {
             format!("{}_level_{}", name_prefix, depth)
         };
 
-        components.push(ComponentInfo {
-            name,
-            size,
-            path: path.clone(),
-        });
+        if rows == 1 {
+            components.push(ComponentInfo {
+                name,
+                size,
+                path: path.clone(),
+            });
+        } else {
+            for row in 0..rows {
+                let mut row_path = path.clone();
+                row_path.push(format!("row_{}", row));
+                components.push(ComponentInfo {
+                    name: format!("{}_row_{}", name, row),
+                    size,
+                    path: row_path,
+                });
+            }
+        }
 
         if let Some(next) = &config.next {
             path.push("next".to_string());
@@ -298,24 +341,25 @@ impl AuxSumcheckConfig {
                 config.rank.next_power_of_two(),
                 components,
                 path,
+                1,
             );
         }
     }
 
     fn build_config_with_prefixes(
         &self,
-        assigned_prefixes: &[(ComponentInfo, Prefix)],
+        assigned_prefixes: &[(ComponentInfo, Placement)],
         composed_witness_length: usize,
         usage_ratio: f64,
         depth: usize,
     ) -> Config {
-        // Helper to find prefix by path
-        let find_prefix = |path: &[String]| -> Prefix {
+        // Helper to find a component's placement by path
+        let find_placement = |path: &[String]| -> Placement {
             assigned_prefixes
                 .iter()
                 .find(|(comp, _)| comp.path == path)
-                .map(|(_, prefix)| prefix.clone())
-                .expect(&format!("Prefix not found for path: {:?}", path))
+                .map(|(_, placement)| placement.clone())
+                .expect(&format!("Placement not found for path: {:?}", path))
         };
 
         // Build commitment recursion
@@ -323,6 +367,7 @@ impl AuxSumcheckConfig {
             &self.commitment_recursion,
             assigned_prefixes,
             &["commitment_recursion".to_string()],
+            self.basic_commitment_rank,
         );
 
         // Build opening recursion
@@ -330,6 +375,7 @@ impl AuxSumcheckConfig {
             &self.opening_recursion,
             assigned_prefixes,
             &["opening_recursion".to_string()],
+            self.nof_openings,
         );
 
         // Build projection recursion
@@ -338,6 +384,7 @@ impl AuxSumcheckConfig {
                 config,
                 assigned_prefixes,
                 &["projection_recursion".to_string()],
+                1,
             )),
             AuxProjection::Fine {
                 nof_batches,
@@ -351,6 +398,7 @@ impl AuxSumcheckConfig {
                         "projection_recursion".to_string(),
                         "constant_term".to_string(),
                     ],
+                    1,
                 );
 
                 let batched_projection = self.build_recursion_config(
@@ -360,6 +408,7 @@ impl AuxSumcheckConfig {
                         "projection_recursion".to_string(),
                         "batched_projection".to_string(),
                     ],
+                    1,
                 );
 
                 Projection::Fine(FineProjectionConfig {
@@ -371,8 +420,8 @@ impl AuxSumcheckConfig {
             AuxProjection::Skip => Projection::Skip,
         };
 
-        // Get folded witness prefix
-        let folded_witness_prefix = find_prefix(&["folded_witness".to_string()]);
+        // Get folded witness placement
+        let folded_witness_placement = find_placement(&["folded_witness".to_string()]);
 
         Config::Sumcheck(SumcheckConfig {
             witness_height: self.witness_height,
@@ -387,10 +436,12 @@ impl AuxSumcheckConfig {
             projection_recursion,
             witness_decomposition_base_log: self.witness_decomposition_base_log,
             witness_decomposition_chunks: self.witness_decomposition_chunks,
-            folded_witness_prefix,
+            folded_witness_placement,
             composed_witness_length,
             norm_bound: f64::INFINITY,
             most_inner_norm_bound: f64::INFINITY,
+            projection_norm_bound: f64::INFINITY,
+            exact_projection_norm: self.exact_projection_norm,
             next: self.next.as_ref().map(|next| {
                 Box::new(match next.as_ref() {
                     AuxConfig::Sumcheck(cfg) => cfg.generate_config_inner(depth + 1),
@@ -404,14 +455,29 @@ impl AuxSumcheckConfig {
     fn build_recursion_config(
         &self,
         aux_config: &AuxRecursionConfig,
-        assigned_prefixes: &[(ComponentInfo, Prefix)],
+        assigned_prefixes: &[(ComponentInfo, Placement)],
         base_path: &[String],
+        rows: usize,
     ) -> RecursionConfig {
-        let prefix = assigned_prefixes
-            .iter()
-            .find(|(comp, _)| comp.path == base_path)
-            .map(|(_, prefix)| prefix.clone())
-            .expect(&format!("Prefix not found for path: {:?}", base_path));
+        let find = |path: &[String]| -> Placement {
+            assigned_prefixes
+                .iter()
+                .find(|(comp, _)| comp.path == path)
+                .map(|(_, placement)| placement.clone())
+                .expect(&format!("Placement not found for path: {:?}", path))
+        };
+
+        let placements = if rows == 1 {
+            vec![find(base_path)]
+        } else {
+            (0..rows)
+                .map(|row| {
+                    let mut row_path = base_path.to_vec();
+                    row_path.push(format!("row_{}", row));
+                    find(&row_path)
+                })
+                .collect()
+        };
 
         let next = if let Some(aux_next) = &aux_config.next {
             let mut next_path = base_path.to_vec();
@@ -420,6 +486,7 @@ impl AuxSumcheckConfig {
                 aux_next,
                 assigned_prefixes,
                 &next_path,
+                1,
             )))
         } else {
             None
@@ -429,7 +496,7 @@ impl AuxSumcheckConfig {
             decomposition_base_log: aux_config.decomposition_base_log,
             decomposition_chunks: aux_config.decomposition_chunks,
             rank: aux_config.rank,
-            prefix,
+            placements,
             next,
         }
     }
@@ -439,9 +506,9 @@ impl AuxSumcheckConfig {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_toy_config_generation() {
-        let aux_config = AuxSumcheckConfig {
+    fn toy_config_aux() -> AuxSumcheckConfig {
+        AuxSumcheckConfig {
+            exact_projection_norm: false,
             witness_height: 512,
             witness_width: 16,
             projection_ratio: 32,
@@ -474,14 +541,18 @@ mod tests {
             witness_decomposition_base_log: 15,
             witness_decomposition_chunks: 2,
             next: None,
-        };
+        }
+    }
 
-        let _config = aux_config.generate_config();
+    #[test]
+    fn test_toy_config_generation() {
+        let _config = toy_config_aux().generate_config();
     }
 
     #[test]
     fn test_toy_config_ii_generation() {
         let aux_config = AuxSumcheckConfig {
+            exact_projection_norm: false,
             witness_height: 512,
             witness_width: 16,
             projection_ratio: 64,
@@ -526,5 +597,25 @@ mod tests {
         };
 
         let _config = aux_config.generate_config();
+    }
+
+    /// A power-of-two component has a single-bit binary decomposition, so it occupies one block.
+    #[test]
+    fn power_of_two_components_are_single_blocks() {
+        let config = match toy_config_aux().generate_config() {
+            Config::Sumcheck(config) => config,
+            _ => panic!("expected a sumcheck config"),
+        };
+
+        assert_eq!(config.folded_witness_placement.blocks.len(), 1);
+
+        let mut level = Some(&config.commitment_recursion);
+        while let Some(current) = level {
+            for placement in &current.placements {
+                assert!(placement.size.is_power_of_two());
+                assert_eq!(placement.blocks.len(), 1);
+            }
+            level = current.next.as_deref();
+        }
     }
 }

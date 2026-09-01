@@ -2,7 +2,6 @@ use std::cell::RefCell;
 
 use crate::{
     common::{
-        arithmetic::ONE,
         ring_arithmetic::{Representation, RingElement},
         sumcheck_element::SumcheckElement,
     },
@@ -270,8 +269,8 @@ impl EvaluationSumcheckData for SelectorEqEvaluation {
             panic!("Point has incorrect number of variables");
         }
 
-        self.result.set_from(&*ONE);
-
+        // The loop below multiplies into `result`, which `new` leaves at one and the
+        // `evaluated` early return keeps to a single pass.
         // LS-first: the selector variables are folded LAST.
         // point layout: [non-selector LS vars..., selector vars from LSB to MSB...]
         // Selector challenges start at index (total_variable_count - selector_variable_count).
